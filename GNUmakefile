@@ -1,13 +1,17 @@
-# Usage: make start-gemma | make bench-gemma | make build | make stop
+# Usage: make start-gemma | make start-gpt-oss | make bench-gemma | make bench-gpt-oss | make build | make stop | make docker-gemma-up | make docker-gemma-down | make docker-gemma-logs
 
 BUILD_DIR := build
 SERVER    := $(BUILD_DIR)/bin/llama-server
 BENCH     := $(BUILD_DIR)/bin/llama-bench
-GEMMA_MODEL := models/gemma-4-31B-it-UD-Q4_K_XL.gguf
-GEMMA_PORT  := 8081
-GEMMA_CTX   := 131072
+DOCKER_COMPOSE := docker compose -f compose.gemma.yml
+GEMMA_MODEL   := models/gemma-4-31B-it-UD-Q4_K_XL.gguf
+GEMMA_PORT    := 8081
+GEMMA_CTX     := 131072
+GPT_OSS_MODEL := models/UD-Q4_K_XL/gpt-oss-120b-UD-Q4_K_XL-00001-of-00002.gguf
+GPT_OSS_PORT  := 8082
+GPT_OSS_CTX   := 131072
 
-.PHONY: build start-gemma bench-gemma stop
+.PHONY: build start-gemma start-gpt-oss bench-gemma bench-gpt-oss stop docker-gemma-up docker-gemma-down docker-gemma-logs
 
 build:
 	cmake --build $(BUILD_DIR) --config Release -j "$$(nproc)"
@@ -34,5 +38,37 @@ bench-gemma:
 	  -mmp 0 -b 2048 -ub 512 \
 	  -p 512,4096,16384 -n 128
 
+start-gpt-oss:
+	$(SERVER) \
+	  -m $(GPT_OSS_MODEL) \
+	  -c $(GPT_OSS_CTX) \
+	  -ngl 99 \
+	  --no-mmap \
+	  -fa on \
+	  -ctk q8_0 \
+	  -ctv q8_0 \
+	  -b 2048 \
+	  -ub 512 \
+	  --host 0.0.0.0 \
+	  --port $(GPT_OSS_PORT)
+
+bench-gpt-oss:
+	$(BENCH) \
+	  -m $(GPT_OSS_MODEL) \
+	  -ngl 99 -fa 1 \
+	  -ctk q8_0 -ctv q8_0 \
+	  -mmp 0 -b 2048 -ub 512 \
+	  -p 512,4096,16384 -n 128
+
 stop:
-	@lsof -ti tcp:$(GEMMA_PORT) | xargs -r kill && echo "stopped" || echo "nothing on port $(GEMMA_PORT)"
+	@lsof -ti tcp:$(GEMMA_PORT) | xargs -r kill && echo "stopped gemma" || echo "nothing on port $(GEMMA_PORT)"
+	@lsof -ti tcp:$(GPT_OSS_PORT) | xargs -r kill && echo "stopped gpt-oss" || echo "nothing on port $(GPT_OSS_PORT)"
+
+docker-gemma-up:
+	$(DOCKER_COMPOSE) up -d --build gemma-server
+
+docker-gemma-down:
+	$(DOCKER_COMPOSE) down
+
+docker-gemma-logs:
+	$(DOCKER_COMPOSE) logs -f gemma-server
