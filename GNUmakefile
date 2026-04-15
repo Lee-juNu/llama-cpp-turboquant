@@ -5,6 +5,8 @@ SERVER    := $(BUILD_DIR)/bin/llama-server
 BENCH     := $(BUILD_DIR)/bin/llama-bench
 DOCKER_COMPOSE := docker compose -f compose.gemma.yml
 GEMMA_MODEL   := models/gemma-4-31B-it-UD-Q4_K_XL.gguf
+GEMMA_MMPROJ  := models/mmproj-gemma-4-31B-it-F16.gguf
+GEMMA_MEDIA_PATH := /media
 GEMMA_PORT    := 8081
 GEMMA_CTX     := 131072
 GPT_OSS_MODEL := models/UD-Q4_K_XL/gpt-oss-120b-UD-Q4_K_XL-00001-of-00002.gguf
@@ -65,7 +67,19 @@ stop:
 	@lsof -ti tcp:$(GPT_OSS_PORT) | xargs -r kill && echo "stopped gpt-oss" || echo "nothing on port $(GPT_OSS_PORT)"
 
 docker-gemma-up:
-	$(DOCKER_COMPOSE) up -d --build gemma-server
+	@mmproj="$(GEMMA_MMPROJ)"; \
+	if [ ! -f "$$mmproj" ]; then \
+	  found=$$(ls models/mmproj-gemma*.gguf 2>/dev/null | head -n1); \
+	  if [ -n "$$found" ]; then \
+	    echo "auto-detected mmproj: $$found"; \
+	    mmproj="$$found"; \
+	  else \
+	    echo "missing mmproj: $$mmproj"; \
+	    echo "to generate: python3 convert_hf_to_gguf.py /path/to/gemma-4-31b-it --mmproj --outtype f16 --outfile models/mmproj-gemma-4-31B-it-F16.gguf"; \
+	    exit 1; \
+	  fi; \
+	fi; \
+	GEMMA_MODEL=/$(GEMMA_MODEL) GEMMA_MMPROJ=/$$mmproj GEMMA_MEDIA_PATH=$(GEMMA_MEDIA_PATH) GEMMA_CTX=$(GEMMA_CTX) $(DOCKER_COMPOSE) up -d --build gemma-server
 
 docker-gemma-down:
 	$(DOCKER_COMPOSE) down
